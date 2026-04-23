@@ -2,60 +2,231 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Lofi Code Player</title>
+    <title>Lofi Logic Studio - Floating Pixel</title>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg-color: #1a1b26;
-            --accent-color: #ff9e64; /* 暖橙色，更有Lofi感 */
-            --text-color: #cfc9c2;
+        :root { --bg: #0d0e14; --accent: #ff9e64; --border: #38bdf8; --step-off: #1e1f29; }
+        
+        body { 
+            margin: 0; background: var(--bg); color: #fff; 
+            font-family: 'Press Start 2P', cursive; 
+            display: flex; flex-direction: column; align-items: center; 
+            padding-top: 130px; /* 为顶部悬浮栏留出空间 */
+            padding-bottom: 50px;
+            font-size: 8px; 
+            position: relative;
         }
-        body {
-            margin: 0;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            font-family: 'Courier New', Courier, monospace;
-            overflow: hidden;
+
+        /* 复古像素扫描线背景效果 */
+        body::after {
+            content: ""; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.15) 50%), 
+                        linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+            background-size: 100% 3px, 3px 100%; pointer-events: none; z-index: 999; /* 放在最上层 */
         }
-        /* 简单的背景噪点装饰 */
-        body::before {
-            content: "";
-            position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: url('https://www.transparenttextures.com/patterns/stardust.png');
-            opacity: 0.1;
-            pointer-events: none;
+
+        /* 悬浮控制栏 - 顺手、tech */
+        .floating-transport {
+            position: fixed; top: 0; left: 0; width: 100%;
+            height: 90px; background: rgba(22, 23, 32, 0.85); /* 半透明 */
+            border-bottom: 4px solid var(--border);
+            backdrop-filter: blur(8px); /* 磨砂效果 */
+            z-index: 1000;
+            display: flex; align-items: center; justify-content: center; gap: 30px;
+            box-shadow: 0 5px 25px rgba(0,0,0,0.6);
         }
-        .player-card {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 40px;
-            border-radius: 4px;
-            border: 1px solid rgba(255, 158, 100, 0.3);
-            text-align: center;
-            backdrop-filter: blur(5px);
+
+        .ctrl-group { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+        
+        button { 
+            padding: 12px 20px; font-family: inherit; cursor: pointer; border: none; 
+            background: var(--border); color: #000; box-shadow: 3px 3px 0 #000;
+            transition: 0.1s;
         }
-        .status { 
-            margin-bottom: 30px; 
-            font-size: 0.9rem; 
-            letter-spacing: 3px;
-            text-transform: uppercase;
+        button:active { transform: translate(2px, 2px); box-shadow: none; }
+        button#play-btn.playing { background: var(--accent); }
+
+        input[type=range] { cursor: pointer; accent-color: var(--accent); }
+
+        /* 轨道工作区 - 保持在同一页，整齐平铺 */
+        .rack { width: 95%; max-width: 1100px; display: flex; flex-direction: column; gap: 8px; }
+        
+        .group-tag { 
+            color: var(--border); border-bottom: 2px solid #333; 
+            padding: 20px 0 5px 0; margin-bottom: 5px; text-align: left; width: 100%;
         }
-        .controls button {
-            padding: 12px 24px;
-            background: transparent;
-            border: 1px solid var(--accent-color);
-            color: var(--accent-color);
-            cursor: pointer;
-            font-family: inherit;
-            font-size: 0.8rem;
-            transition: all 0.4s;
-            outline: none;
+
+        .track { 
+            display: flex; align-items: center; gap: 10px; 
+            background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 2px;
         }
-        .controls button:hover {
-            background: var(--accent-color);
-            color: var(--bg-color);
-            box-shadow: 0 0 15px rgba(255, 158, 100, 0.
+        .mixer { width: 90px; display: flex; flex-direction: column; gap: 4px; border-right: 1px solid #333; padding-right: 10px; }
+        .track-name { font-size: 7px; color: var(--accent); text-transform: uppercase; white-space: nowrap; overflow: hidden; }
+
+        /* 步进器网格 */
+        .steps { display: grid; grid-template-columns: repeat(16, 1fr); gap: 4px; flex-grow: 1; }
+        .step { 
+            aspect-ratio: 1; background: var(--step-off); border: 1px solid #000; cursor: pointer; 
+            min-width: 20px;
+        }
+        .step.on { background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+        .step.beat { border-color: #555; }
+        .step.current { border: 2px solid #fff; transform: scale(1.1); z-index: 10; }
+
+    </style>
+</head>
+<body>
+
+    <div class="floating-transport">
+        <div class="ctrl-group">
+            <button id="play-btn">START SYSTEM</button>
+        </div>
+        <div class="ctrl-group">
+            <button id="replay-btn">REPLAY</button>
+        </div>
+        <div class="ctrl-group">
+            <label id="bpm-val">BPM: 85</label>
+            <input type="range" id="bpm-slider" min="40" max="180" value="85">
+        </div>
+        <div class="ctrl-group">
+            <label>MASTER VOL</label>
+            <input type="range" id="master-vol" min="0" max="1" step="0.01" value="0.6">
+        </div>
+    </div>
+
+    <div class="rack" id="main-rack"></div>
+
+<script>
+    let audioCtx, masterGain, isPlaying = false;
+    let nextStepTime = 0, currentStep = 0;
+    let tempo = 85;
+
+    // 音轨定义
+    const tracks = [
+        { id: 'kick', name: 'KICK', group: 'DRUMS' },
+        { id: 'snare', name: 'SNARE', group: 'DRUMS' },
+        { id: 'hihat', name: 'HI-HAT', group: 'DRUMS' },
+        { id: 'clap', name: 'CLAP', group: 'DRUMS' },
+        { id: 'rhodes1', name: 'KEYS A', group: 'KEYS' },
+        { id: 'rhodes2', name: 'KEYS B', group: 'KEYS' },
+        { id: 'bass', name: 'BASS', group: 'BASS' },
+        { id: 'rain', name: 'RAIN', group: 'FX' },
+        { id: 'vinyl', name: 'VINYL', group: 'FX' },
+        { id: 'radio', name: 'RADIO', group: 'FX' }
+    ];
+
+    const patterns = {};
+
+    // 渲染 UI 网格
+    const rack = document.getElementById('main-rack');
+    let currentGroup = '';
+
+    tracks.forEach(t => {
+        patterns[t.id] = Array(16).fill(0);
+        if (t.group !== currentGroup) {
+            const tag = document.createElement('div');
+            tag.className = 'group-tag';
+            tag.innerText = t.group;
+            rack.appendChild(tag);
+            currentGroup = t.group;
+        }
+
+        const trkDiv = document.createElement('div');
+        trkDiv.className = 'track';
+        trkDiv.innerHTML = `
+            <div class="mixer">
+                <div class="track-name">${t.name}</div>
+                <input type="range" class="vol-slider" id="vol-${t.id}" min="0" max="1" step="0.05" value="0.6">
+            </div>
+            <div class="steps" id="steps-${t.id}"></div>
+        `;
+        rack.appendChild(trkDiv);
+
+        const stepsCont = document.getElementById(`steps-${t.id}`);
+        for (let i = 0; i < 16; i++) {
+            const s = document.createElement('div');
+            s.className = `step ${i % 4 === 0 ? 'beat' : ''}`;
+            s.id = `step-${t.id}-${i}`;
+            s.onclick = () => {
+                patterns[t.id][i] = patterns[t.id][i] ? 0 : 1;
+                s.classList.toggle('on');
+            };
+            stepsCont.appendChild(s);
+        }
+    });
+
+    // 简易合成器音频引擎
+    function playSound(id, time) {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        const vol = document.getElementById(`vol-${id}`).value;
+
+        if (id === 'kick') { osc.frequency.setValueAtTime(150, time); osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.12); }
+        else if (id === 'snare') { osc.type = 'square'; osc.frequency.setValueAtTime(200, time); g.gain.setValueAtTime(0.04, time); }
+        else if (id === 'hihat') { osc.type = 'triangle'; osc.frequency.setValueAtTime(10000, time); }
+        else if (id.includes('rhodes')) { osc.type = 'triangle'; osc.frequency.value = id === 'rhodes1' ? 349.23 : 440.00; }
+        else if (id === 'bass') { osc.type = 'sine'; osc.frequency.value = 65.41; }
+        else { osc.type = 'sawtooth'; osc.frequency.value = Math.random() * 40 + 40; }
+
+        g.gain.setValueAtTime(vol * 0.4, time);
+        g.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+        osc.connect(g).connect(masterGain);
+        osc.start(time); osc.stop(time + 0.3);
+    }
+
+    function scheduler() {
+        const stepDuration = 60 / tempo / 4;
+        while (nextStepTime < audioCtx.currentTime + 0.1) {
+            if (isPlaying) {
+                tracks.forEach(t => {
+                    if (patterns[t.id][currentStep]) playSound(t.id, nextStepTime);
+                });
+            }
+            draw(currentStep);
+            nextStepTime += stepDuration;
+            currentStep = (currentStep + 1) % 16;
+        }
+        if (isPlaying) setTimeout(scheduler, 25);
+    }
+
+    function draw(step) {
+        document.querySelectorAll('.step').forEach(el => el.classList.remove('current'));
+        tracks.forEach(t => {
+            const el = document.getElementById(`step-${t.id}-${step}`);
+            if (el) el.classList.add('current');
+        });
+    }
+
+    // 悬浮栏交互逻辑
+    const playBtn = document.getElementById('play-btn');
+    playBtn.onclick = () => {
+        if (!audioCtx) {
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.connect(audioCtx.destination);
+        }
+        isPlaying = !isPlaying;
+        if (isPlaying) {
+            playBtn.innerText = "PAUSE SYSTEM";
+            playBtn.classList.add('playing');
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            nextStepTime = audioCtx.currentTime;
+            scheduler();
+        } else {
+            playBtn.innerText = "RESUME SYSTEM";
+            playBtn.classList.remove('playing');
+            audioCtx.suspend();
+        }
+    };
+
+    document.getElementById('replay-btn').onclick = () => { currentStep = 0; if(audioCtx) nextStepTime = audioCtx.currentTime; };
+    document.getElementById('bpm-slider').oninput = (e) => {
+        tempo = e.target.value;
+        document.getElementById('bpm-val').innerText = `BPM: ${tempo}`;
+    };
+    document.getElementById('master-vol').oninput = (e) => {
+        if (masterGain) masterGain.gain.value = e.target.value;
+    };
+</script>
+</body>
+</html>
