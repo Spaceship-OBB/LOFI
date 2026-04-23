@@ -47,8 +47,11 @@
     <div class="floating-transport">
         <div class="ctrl-group"><button id="play-btn">INITIALIZE SYSTEM</button></div>
         <div class="ctrl-group"><button id="replay-btn">REPLAY</button></div>
+	<div class="ctrl-group"><button id="clean-btn">CLEAN</button></div>
         <div class="ctrl-group"><label id="bpm-val">BPM: 85</label><input type="range" id="bpm-slider" min="40" max="180" value="85"></div>
         <div class="ctrl-group"><label>MASTER VOL</label><input type="range" id="master-vol" min="0" max="1" step="0.01" value="0.6"></div>
+	<div class="ctrl-group"><button id="save-btn">SAVE MY BEAT</button></div>
+	<div class="ctrl-group"><button id="load-btn">LOAD MY BEAT</button></div>
     </div>
 
     <div class="rack" id="main-rack"></div>
@@ -57,17 +60,25 @@
     let audioCtx, masterGain, isPlaying = false;
     let nextStepTime = 0, currentStep = 0, tempo = 85;
 
+    const soundLibrary = {
+        kick: ["Classic", "Hard 808", "Deep Sub", "Vintage"],
+        snare: ["Lo-fi", "Rimshot", "Clap-ish", "Soft"],
+        hihat: ["Closed", "Open", "Pedal", "Lo-bit"],
+        rhodes: ["Neo-Soul", "E-Piano", "Dark Pad", "Vibes"],
+        bass: ["Sub Sine", "Thick Tri", "808 Bass"],
+        fx: ["Natural", "Crush", "Radio"],
+        wechat: ["Message", "Ringtone"]
+    };
+
     const tracks = [
-        { id: 'kick', name: 'KICK', group: 'DRUMS', vol: 0.8 },
-        { id: 'snare', name: 'SNARE', group: 'DRUMS', vol: 0.6 },
-        { id: 'hihat', name: 'HI-HAT', group: 'DRUMS', vol: 0.4 },
-        { id: 'clap', name: 'CLAP', group: 'DRUMS', vol: 0.5 },
-        { id: 'rhodes1', name: 'KEYS A', group: 'KEYS', vol: 0.5 },
-        { id: 'rhodes2', name: 'KEYS B', group: 'KEYS', vol: 0.5 },
-        { id: 'bass', name: 'BASS', group: 'BASS', vol: 0.7 },
-        { id: 'rain', name: 'RAIN', group: 'FX', vol: 0.2 },
-        { id: 'vinyl', name: 'VINYL', group: 'FX', vol: 0.15 },
-        { id: 'radio', name: 'RADIO', group: 'FX', vol: 0.1 }
+        { id: 'kick', name: 'KICK', type: 'kick', group: 'DRUMS', vol: 0.8 },
+        { id: 'snare', name: 'SNARE', type: 'snare', group: 'DRUMS', vol: 0.6 },
+        { id: 'hihat', name: 'HI-HAT', type: 'hihat', group: 'DRUMS', vol: 0.4 },
+        { id: 'rhodes1', name: 'KEYS A', type: 'rhodes', group: 'KEYS', vol: 0.5 },
+        { id: 'rhodes2', name: 'KEYS B', type: 'rhodes', group: 'KEYS', vol: 0.5 },
+        { id: 'bass', name: 'BASS', type: 'bass', group: 'BASS', vol: 0.7 },
+        { id: 'rain', name: 'RAIN', type: 'fx', group: 'FX', vol: 0.2 },
+        { id: 'wechat', name: 'WECHAT', type: 'wechat', group: 'FX', vol: 0.5 }
     ];
 
     const patterns = {};
@@ -81,7 +92,16 @@
             rack.appendChild(tag); currentGroup = t.group;
         }
         const trkDiv = document.createElement('div'); trkDiv.className = 'track';
-        trkDiv.innerHTML = `<div class="mixer"><div class="track-name">${t.name}</div><input type="range" class="vol-slider" id="vol-${t.id}" min="0" max="1" step="0.05" value="${t.vol}"></div><div class="steps" id="steps-${t.id}"></div>`;
+        trkDiv.innerHTML = `
+            <div class="mixer">
+                <div class="track-name">${t.name}</div>
+                <select id="style-${t.id}" style="background:#000; color:var(--border); border:1px solid #333; font-family:inherit; font-size:6px; margin:4px 0;">
+                    ${soundLibrary[t.type] ? soundLibrary[t.type].map(s => `<option value="${s}">${s}</option>`).join('') : ''}
+                </select>
+                <input type="range" class="vol-slider" id="vol-${t.id}" min="0" max="1" step="0.05" value="${t.vol}">
+            </div>
+            <div class="steps" id="steps-${t.id}"></div>
+        `;
         rack.appendChild(trkDiv);
         const stepsCont = document.getElementById(`steps-${t.id}`);
         for (let i = 0; i < 16; i++) {
@@ -92,37 +112,70 @@
         }
     });
 
-    function applyFullLofiTemplate() {
-        [0, 9, 10].forEach(i => setStep('kick', i));
-        [4, 12].forEach(i => setStep('snare', i));
-        [0, 2, 4, 6, 8, 10, 12, 14].forEach(i => setStep('hihat', i));
-        [12].forEach(i => setStep('clap', i)); // 第13拍加一个拍手
-        [0].forEach(i => setStep('rhodes1', i));
-        [8].forEach(i => setStep('rhodes2', i));
-        [0, 8].forEach(i => setStep('bass', i));
-        for(let i=0; i<16; i++) { setStep('rain', i); if(i%2===0) setStep('vinyl', i); if(i%8===0) setStep('radio', i); }
+    function setStep(id, i) { 
+        if (!patterns[id]) return; 
+        patterns[id][i] = 1; 
+        const el = document.getElementById(`step-${id}-${i}`);
+        if (el) el.classList.add('on'); 
     }
 
-    function setStep(id, i) { patterns[id][i] = 1; document.getElementById(`step-${id}-${i}`).classList.add('on'); }
+    function applyFullLofiTemplate() {
+        Object.keys(patterns).forEach(key => patterns[key].fill(0));
+        document.querySelectorAll('.step').forEach(el => el.classList.remove('on'));
+        const preset = {
+            'kick': [0, 10], 'snare': [4, 12], 'hihat': [0, 2, 4, 6, 8, 10, 12],
+            'rhodes1': [0], 'rhodes2': [6], 'bass': [0, 10], 'wechat': [14]
+        };
+        for (const [id, steps] of Object.entries(preset)) { steps.forEach(stepIdx => setStep(id, stepIdx)); }
+        for(let i=0; i<16; i++) { setStep('rain', i); }
+    }
 
     function playSound(id, time) {
-        const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
+        if (!audioCtx) return;
+        const style = document.getElementById(`style-${id}`).value;
+        const type = tracks.find(t => t.id === id).type;
         const vol = document.getElementById(`vol-${id}`).value;
-        if (id === 'kick') { osc.frequency.setValueAtTime(150, time); osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.12); }
-        else if (id === 'snare') { osc.type = 'square'; osc.frequency.setValueAtTime(180, time); g.gain.setValueAtTime(0.05, time); }
-        else if (id === 'hihat') { osc.type = 'triangle'; osc.frequency.setValueAtTime(9000, time); }
-        else if (id === 'clap') { osc.type = 'triangle'; osc.frequency.setValueAtTime(500, time); g.gain.setValueAtTime(0.05, time); }
-        else if (id.includes('rhodes')) { 
-            osc.type = 'triangle'; osc.frequency.value = id === 'rhodes1' ? 349.23 : 261.63;
-            const f = audioCtx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 450;
-            osc.connect(f); f.connect(g);
-        }
-        else if (id === 'bass') { osc.type = 'sine'; osc.frequency.value = 60; }
-        else { osc.type = 'sawtooth'; osc.frequency.value = Math.random() * 30 + 30; }
+        const g = audioCtx.createGain();
 
-        if(!id.includes('rhodes')) osc.connect(g);
-        g.gain.setValueAtTime(vol * 0.4, time); g.gain.exponentialRampToValueAtTime(0.001, time + 0.5);
-        g.connect(masterGain); osc.start(time); osc.stop(time + 0.5);
+        if (type === 'wechat' && style === "Ringtone") {
+            const notes = [659.25, 783.99, 659.25, 523.25];
+            notes.forEach((f, i) => {
+                const o = audioCtx.createOscillator(); const lg = audioCtx.createGain();
+                o.type = 'sine'; o.frequency.setValueAtTime(f, time + i * 0.15);
+                lg.gain.setValueAtTime(vol * 0.3, time + i * 0.15);
+                lg.gain.exponentialRampToValueAtTime(0.001, time + i * 0.15 + 0.1);
+                o.connect(lg).connect(masterGain); o.start(time + i * 0.15); o.stop(time + i * 0.15 + 0.12);
+            });
+            return;
+        }
+
+        const osc = audioCtx.createOscillator();
+        if (type === 'kick') {
+            osc.frequency.setValueAtTime(style === "Hard 808" ? 150 : 120, time);
+            osc.frequency.exponentialRampToValueAtTime(0.01, time + (style === "Hard 808" ? 0.4 : 0.1));
+            g.gain.setValueAtTime(vol, time); g.gain.exponentialRampToValueAtTime(0.001, time + (style === "Hard 808" ? 0.8 : 0.2));
+        } else if (type === 'snare') {
+            osc.type = (style === "Rimshot") ? 'triangle' : 'square';
+            osc.frequency.setValueAtTime(220, time);
+            g.gain.setValueAtTime(vol * 0.3, time); g.gain.exponentialRampToValueAtTime(0.01, time + 0.2);
+        } else if (type === 'bass') {
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(style === "808 Bass" ? 50 : 60, time);
+            g.gain.setValueAtTime(vol * 0.8, time); g.gain.exponentialRampToValueAtTime(0.001, time + 0.8);
+        } else if (type === 'rhodes') {
+            osc.type = 'sine';
+            const freqs = { "Neo-Soul": 349.23, "E-Piano": 261.63, "Dark Pad": 174.61, "Vibes": 440.00 };
+            osc.frequency.value = freqs[style] || 261.63;
+            g.gain.setValueAtTime(vol * 0.3, time); g.gain.exponentialRampToValueAtTime(0.001, time + 1.2);
+        } else if (type === 'wechat') {
+            osc.type = 'sine'; osc.frequency.setValueAtTime(880, time);
+            osc.frequency.exponentialRampToValueAtTime(1320, time + 0.1);
+            g.gain.setValueAtTime(vol * 0.5, time); g.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+        } else {
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(type === 'hihat' ? 10000 : 40, time);
+            g.gain.setValueAtTime(vol * 0.2, time); g.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+        }
+
+        osc.connect(g).connect(masterGain); osc.start(time); osc.stop(time + 1.5);
     }
 
     function scheduler() {
@@ -143,12 +196,50 @@
     document.getElementById('play-btn').onclick = () => {
         if (!audioCtx) { audioCtx = new AudioContext(); masterGain = audioCtx.createGain(); masterGain.connect(audioCtx.destination); applyFullLofiTemplate(); }
         isPlaying = !isPlaying;
-        if (isPlaying) { document.getElementById('play-btn').innerText = "PAUSE"; nextStepTime = audioCtx.currentTime; scheduler(); }
-        else { document.getElementById('play-btn').innerText = "RESUME"; }
+        document.getElementById('play-btn').innerText = isPlaying ? "PAUSE" : "RESUME";
+        if (isPlaying) { nextStepTime = audioCtx.currentTime; scheduler(); }
     };
     document.getElementById('replay-btn').onclick = () => { currentStep = 0; if(audioCtx) nextStepTime = audioCtx.currentTime; };
+	document.getElementById('clean-btn').onclick = () => {
+    // 1. 将所有逻辑数据清零
+    Object.keys(patterns).forEach(id => {
+        if (patterns[id]) patterns[id].fill(0);
+    });
+    // 2. 移除所有格子的激活状态 (去掉橘色高亮)
+    document.querySelectorAll('.step').forEach(el => el.classList.remove('on'));
+};
     document.getElementById('bpm-slider').oninput = (e) => { tempo = e.target.value; document.getElementById('bpm-val').innerText = `BPM: ${tempo}`; };
     document.getElementById('master-vol').oninput = (e) => { if (masterGain) masterGain.gain.value = e.target.value; };
+// --- 保存当前搭配 ---
+document.getElementById('save-btn').onclick = () => {
+    // 将当前的格子数据存入浏览器本地存储
+    localStorage.setItem('lofi_user_preset', JSON.stringify(patterns));
+    alert('搭配已保存！(Beat Saved to Browser)');
+};
+
+// --- 加载保存的搭配 ---
+document.getElementById('load-btn').onclick = () => {
+    const saved = localStorage.getItem('lofi_user_preset');
+    if (!saved) {
+        alert('还没有保存过搭配哦！');
+        return;
+    }
+
+    // 1. 先清空当前界面
+    Object.keys(patterns).forEach(id => { if (patterns[id]) patterns[id].fill(0); });
+    document.querySelectorAll('.step').forEach(el => el.classList.remove('on'));
+
+    // 2. 解析并还原数据
+    const savedPatterns = JSON.parse(saved);
+    for (const [id, steps] of Object.entries(savedPatterns)) {
+        if (patterns[id]) {
+            steps.forEach((val, index) => {
+                if (val === 1) setStep(id, index);
+            });
+        }
+    }
+    alert('已加载你保存的搭配！');
+};
 </script>
 </body>
 </html>
