@@ -1,0 +1,84 @@
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+// 1. 生成黑胶底噪 (Vinyl Crackle & White Noise)
+const createNoise = () => {
+    const bufferSize = audioCtx.sampleRate * 2;
+    const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+    const output = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+        output[i] = Math.random() * 2 - 1;
+    }
+    const whiteNoise = audioCtx.createBufferSource();
+    whiteNoise.buffer = buffer;
+    whiteNoise.loop = true;
+
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 500;
+    filter.Q.value = 0.5;
+
+    const gain = audioCtx.createGain();
+    gain.gain.value = 0.02; // 极其微弱的背景声
+
+    whiteNoise.connect(filter).connect(gain).connect(audioCtx.destination);
+    whiteNoise.start();
+};
+
+// 2. 乐器音色：柔和的电钢琴
+const playNote = (freq, start, duration) => {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    const lpf = audioCtx.createBiquadFilter();
+
+    osc.type = 'triangle'; // 三角波比正弦波多一点点泛音，适合模拟琴键
+    osc.frequency.value = freq;
+
+    // 添加颤音 (Wow & Flutter)
+    const vibrato = audioCtx.createOscillator();
+    const vibratoGain = audioCtx.createGain();
+    vibrato.frequency.value = 3 + Math.random() * 2; // 3-5Hz 频率
+    vibratoGain.gain.value = freq * 0.005; // 音高偏移量
+    vibrato.connect(vibratoGain).connect(osc.frequency);
+    vibrato.start();
+
+    lpf.type = 'lowpass';
+    lpf.frequency.value = 800; // 削掉高频，制造“闷”的效果
+
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(0.2, start + 0.1);
+    gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+
+    osc.connect(lpf).connect(gain).connect(audioCtx.destination);
+    osc.start(start);
+    osc.stop(start + duration);
+};
+
+// 3. 简单的 Lo-fi 循环逻辑
+const playLoop = () => {
+    const chords = [
+        [293.66, 349.23, 440.00, 523.25], // Dm7
+        [392.00, 493.88, 587.33, 698.46], // G7
+        [261.63, 329.63, 392.00, 493.88], // Cmaj7
+        [440.00, 523.25, 659.25, 783.99]  // Am7
+    ];
+
+    let time = audioCtx.currentTime + 0.1;
+    const tempo = 80; // 经典的慢速 80 BPM
+    const beatDuration = 60 / tempo;
+
+    const sequence = () => {
+        chords.forEach((chord, i) => {
+            chord.forEach(freq => {
+                playNote(freq, time + (i * beatDuration * 4), beatDuration * 3.5);
+            });
+        });
+        time += beatDuration * 16;
+        setTimeout(sequence, (beatDuration * 16) * 1000);
+    };
+    sequence();
+};
+
+// 启动
+console.log("正在播放 Lofi Hip Hop Beats to Code/Relax to...");
+createNoise();
+playLoop();
