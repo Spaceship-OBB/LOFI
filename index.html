@@ -4,6 +4,11 @@
     <meta charset="UTF-8">
     <title>Lofi Code Player</title>
     <style>
+        :root {
+            --bg-color: #1a1b26;
+            --accent-color: #ff9e64; /* 暖橙色，更有Lofi感 */
+            --text-color: #cfc9c2;
+        }
         body {
             margin: 0;
             height: 100vh;
@@ -11,101 +16,46 @@
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            background: #0f172a;
-            color: #38bdf8;
-            font-family: monospace;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Courier New', Courier, monospace;
+            overflow: hidden;
         }
-        .status { margin-bottom: 20px; font-size: 1.2rem; }
-        button {
-            padding: 15px 30px;
+        /* 简单的背景噪点装饰 */
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: url('https://www.transparenttextures.com/patterns/stardust.png');
+            opacity: 0.1;
+            pointer-events: none;
+        }
+        .player-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 40px;
+            border-radius: 4px;
+            border: 1px solid rgba(255, 158, 100, 0.3);
+            text-align: center;
+            backdrop-filter: blur(5px);
+        }
+        .status { 
+            margin-bottom: 30px; 
+            font-size: 0.9rem; 
+            letter-spacing: 3px;
+            text-transform: uppercase;
+        }
+        .controls button {
+            padding: 12px 24px;
             background: transparent;
-            border: 2px solid #38bdf8;
-            color: #38bdf8;
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
             cursor: pointer;
-            font-size: 1rem;
-            transition: 0.3s;
+            font-family: inherit;
+            font-size: 0.8rem;
+            transition: all 0.4s;
+            outline: none;
         }
-        button:hover { background: #38bdf8; color: #0f172a; }
-    </style>
-</head>
-<body>
-
-    <div class="status" id="display">READY TO RELAX</div>
-    <button id="playBtn">START LOFI BEATS</button>
-
-<script>
-    const playBtn = document.getElementById('playBtn');
-    const display = document.getElementById('display');
-
-    playBtn.addEventListener('click', () => {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        display.innerText = "PLAYING LOFI BEATS...";
-        playBtn.style.display = "none";
-
-        // 1. 生成黑胶底噪
-        const createNoise = () => {
-            const bufferSize = audioCtx.sampleRate * 2;
-            const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
-            const output = buffer.getChannelData(0);
-            for (let i = 0; i < bufferSize; i++) {
-                output[i] = Math.random() * 2 - 1;
-            }
-            const whiteNoise = audioCtx.createBufferSource();
-            whiteNoise.buffer = buffer;
-            whiteNoise.loop = true;
-            const filter = audioCtx.createBiquadFilter();
-            filter.type = 'bandpass';
-            filter.frequency.value = 500;
-            const gain = audioCtx.createGain();
-            gain.gain.value = 0.015; 
-            whiteNoise.connect(filter).connect(gain).connect(audioCtx.destination);
-            whiteNoise.start();
-        };
-
-        // 2. 模拟电钢琴
-        const playNote = (freq, start, duration) => {
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            const lpf = audioCtx.createBiquadFilter();
-            osc.type = 'triangle';
-            osc.frequency.value = freq;
-            lpf.type = 'lowpass';
-            lpf.frequency.value = 800;
-            gain.gain.setValueAtTime(0, start);
-            gain.gain.linearRampToValueAtTime(0.1, start + 0.1);
-            gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
-            osc.connect(lpf).connect(gain).connect(audioCtx.destination);
-            osc.start(start);
-            osc.stop(start + duration);
-        };
-
-        // 3. 循环逻辑
-        const playLoop = () => {
-            const chords = [
-                [293.66, 349.23, 440.00, 523.25], // Dm7
-                [392.00, 493.88, 587.33, 698.46], // G7
-                [261.63, 329.63, 392.00, 493.88], // Cmaj7
-                [440.00, 523.25, 659.25, 783.99]  // Am7
-            ];
-            let time = audioCtx.currentTime + 0.1;
-            const tempo = 75; 
-            const beatDuration = 60 / tempo;
-
-            const sequence = () => {
-                chords.forEach((chord, i) => {
-                    chord.forEach(freq => {
-                        playNote(freq, time + (i * beatDuration * 4), beatDuration * 3.5);
-                    });
-                });
-                time += beatDuration * 16;
-                setTimeout(sequence, (beatDuration * 16) * 1000);
-            };
-            sequence();
-        };
-
-        createNoise();
-        playLoop();
-    });
-</script>
-</body>
-</html>
+        .controls button:hover {
+            background: var(--accent-color);
+            color: var(--bg-color);
+            box-shadow: 0 0 15px rgba(255, 158, 100, 0.
